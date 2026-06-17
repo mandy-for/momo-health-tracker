@@ -60,6 +60,7 @@
     <div id="todayTab" class="tab-content active">
         <p id="displayDate" style="text-align:center; color:#555; font-weight: bold; margin-bottom: 15px;"></p>
         
+        <!-- 🍖 飲食紀錄 -->
         <div class="section">
             <h3>🍖 飲食紀錄 (記錄時間與食物含水)</h3>
             <div class="input-group">
@@ -67,7 +68,7 @@
                     <option value="吱吱/腎活" data-ratio="1.0" data-water="0.8">吱吱/腎活 (1 kcal/g | 80%水)</option>
                     <option value="Reco" data-ratio="1.9" data-water="0.75">Reco (1.9 kcal/ml | 75%水)</option>
                     <option value="RC" data-ratio="1.0" data-water="0.8">RC (1.0 kcal/ml | 80%水)</option>
-                    <option value="Others (0.5kcal/g)" data-ratio="0.5" data-water="0.8">Others (0.5 kcal/g | 80%水)</option>
+                    <option value="Others" data-ratio="0.5" data-water="0.8">Others (0.5 kcal/g | 80%水)</option>
                 </select>
                 <div class="row-inputs">
                     <input type="number" id="foodAmount" placeholder="輸入餵食量 (g/ml)" oninput="updateCalcPreview()">
@@ -79,6 +80,7 @@
             <p style="text-align:right; font-weight:bold; color: #ff6b81; font-size: 1.05em; margin-top: 10px;">今日飲食總計: <span id="totalCal">0</span> kcal</p>
         </div>
 
+        <!-- 💧 獨立飲水與皮下水紀錄 -->
         <div class="section" style="border-left: 5px solid #74b9ff; background: #f2f7ff;">
             <h3>💧 額外補充水份 (直接喝水 / 皮下水)</h3>
             <div class="input-group">
@@ -98,6 +100,7 @@
             <p style="text-align:right; font-size:0.8em; color:#666; margin-top:-5px;">(已自動加總食物含水)</p>
         </div>
 
+        <!-- 💊 處方藥物表格 -->
         <div class="section">
             <h3>💊 今日處方藥物進度表</h3>
             <table class="med-table">
@@ -132,7 +135,7 @@
     ];
 
     let foodData = [];
-    let waterData = []; // 儲存直接喝水與皮下水
+    let waterData = []; 
     let medState = MED_TEMPLATES.map(m => ({ name: m.name, morningTaken: false, nightTaken: false, inNeedCount: 0 }));
     let historyData = []; 
     let lastActiveDate = localStorage.getItem('momo_last_date');
@@ -146,6 +149,48 @@
             const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
             return `${weekdays[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}-${months[d.getMonth()]}-${String(d.getFullYear()).slice(-2)}`;
         } catch(e) { return dateInput; }
+    }
+
+    // 🌟 核心智能翻譯器：不論是複雜原始碼還是文字，一律優化轉成漂亮中文文字
+    function cleanFoodDetails(rawDetails) {
+        if (!rawDetails || rawDetails === "無紀錄") return "無紀錄";
+        try {
+            if (rawDetails.trim().startsWith("[")) {
+                const arr = JSON.parse(rawDetails);
+                return arr.map(f => `${f.time || ''} ${f.name}(${f.amount}g/ml)[${f.cal}kcal]`).join(', ');
+            }
+        } catch(e) {}
+        return rawDetails;
+    }
+
+    function cleanWaterDetails(rawWater) {
+        if (!rawWater || rawWater === "無紀錄") return "無紀錄";
+        try {
+            if (rawWater.trim().startsWith("[")) {
+                const arr = JSON.parse(rawWater);
+                return arr.map(w => `${w.time || ''} ${w.type}(${w.amount}ml)`).join(', ');
+            }
+        } catch(e) {}
+        return rawWater;
+    }
+
+    function cleanMedsDetails(rawMeds) {
+        if (!rawMeds || rawMeds === "無紀錄") return "無紀錄";
+        try {
+            if (rawMeds.trim().startsWith("[")) {
+                const arr = JSON.parse(rawMeds);
+                return arr.map(m => {
+                    let parts = [];
+                    // 尋找對應的範本確認需要顯示哪些按鈕
+                    const template = MED_TEMPLATES.find(t => t.name === m.name) || {morning:true, night:true, inNeed:false};
+                    if (template.morning) parts.push(`早:${m.morningTaken ? '✅':'❌'}`);
+                    if (template.night) parts.push(`夜:${m.nightTaken ? '✅':'❌'}`);
+                    if (template.inNeed || m.inNeedCount > 0) parts.push(`需:${m.inNeedCount}次`);
+                    return `${m.name}(${parts.join(',')})`;
+                }).join(' | ');
+            }
+        } catch(e) {}
+        return rawMeds;
     }
 
     function updateCalcPreview() {
@@ -199,7 +244,6 @@
 
     async function pushTodayToCloud() {
         const totalCal = foodData.reduce((s, i) => s + i.cal, 0);
-        // 計算總攝水量 = 食物含水量總和 + 額外補水量總和
         const foodWaterTotal = foodData.reduce((s, i) => s + (i.water || 0), 0);
         const extraWaterTotal = waterData.reduce((s, i) => s + i.amount, 0);
         const totalWater = (foodWaterTotal + extraWaterTotal).toFixed(1);
@@ -223,8 +267,8 @@
             const extraWaterTotal = waterData.reduce((s, i) => s + i.amount, 0);
             const totalWater = (foodWaterTotal + extraWaterTotal).toFixed(1);
 
-            const details = foodData.map(f => `${f.time || ''} ${f.name}[${f.amount}g/ml](${f.cal}kcal)`).join(', ') || '無紀錄';
-            const waterDetails = waterData.map(w => `${w.time || ''} ${w.type}[${w.amount}ml]`).join(', ') || '無紀錄';
+            const details = foodData.map(f => `${f.time || ''} ${f.name}(${f.amount}g/ml)[${f.cal}kcal]`).join(', ') || '無紀錄';
+            const waterDetailsTxt = waterData.map(w => `${w.time || ''} ${w.type}(${w.amount}ml)`).join(', ') || '無紀錄';
             
             const medsText = medState.map(m => {
                 let parts = [];
@@ -239,7 +283,7 @@
                 await fetch(GOOGLE_SCRIPT_URL, {
                     method: 'POST',
                     mode: 'no-cors',
-                    body: JSON.stringify({ action: "archive", date: oldDate, details, meds: medsText, totalWater, waterDetails: `食物含水:${foodWaterTotal.toFixed(1)}ml, ${waterDetails}` })
+                    body: JSON.stringify({ action: "archive", date: oldDate, details, meds: medsText, totalWater, waterDetails: `食物含水:${foodWaterTotal.toFixed(1)}ml | ${waterDetailsTxt}` })
                 });
             } catch (e) { console.error(e); }
         }
@@ -299,7 +343,6 @@
         if (!isNaN(amount) && amount > 0) { 
             const cal = Math.round(amount * ratio * 10) / 10; 
             const water = Math.round(amount * waterRatio * 10) / 10;
-            // ✅ 獲取目前餵食的精準香港時間 (HH:MM)
             const timeStr = new Date().toLocaleTimeString('zh-HK', { hour: '2-digit', minute: '2-digit', hour12: false });
             
             foodData.push({ name, amount, cal, water, time: timeStr }); 
@@ -331,7 +374,6 @@
     async function resetInNeed(idx) { medState[idx].inNeedCount = 0; renderTodayData(); await pushTodayToCloud(); }
 
     function renderTodayData() {
-        // 渲染食物與時間
         const fList = document.getElementById('foodList'); fList.innerHTML = '';
         let totalCal = 0;
         let foodWaterTotal = 0;
@@ -342,7 +384,6 @@
         });
         document.getElementById('totalCal').innerText = totalCal.toFixed(1);
 
-        // 渲染獨立喝水/皮下水
         const wList = document.getElementById('waterList'); wList.innerHTML = '';
         let extraWaterTotal = 0;
         waterData.forEach(w => {
@@ -351,10 +392,8 @@
             wList.innerHTML += `<li><span><span class="time-badge">${w.time || ''}</span>${icon} ${w.type}</span> <strong>${w.amount} ml</strong></li>`;
         });
         
-        // 💥 計算並更新【總攝水量】（食物水 + 額外補水）
         document.getElementById('grandTotalWater').innerText = (foodWaterTotal + extraWaterTotal).toFixed(1);
 
-        // 藥物表格
         const tBody = document.getElementById('medTableBody'); tBody.innerHTML = '';
         MED_TEMPLATES.forEach((m, i) => {
             let rowHtml = `<tr><td>${m.name}</td>`;
@@ -377,9 +416,9 @@
                 <div class="history-card">
                     <strong>📅 ${h.formattedDate}</strong> | <span style="${val >= 140 ? 'color:#6ab04c' : 'color:#ff7675'}; font-weight:bold;">${val >= 140 ? '🟢' : '⚠️ 唔夠秤'} ${h.totalCal} kcal</span><br>
                     <div style="color:#0984e3; font-weight:bold; margin-top:3px; font-size:0.9em;">💧 總攝水量: ${h.totalWater || 0} ml</div>
-                    <div style="margin-top:5px; color:#555; font-size:0.85em;">粗🍖 飲食明細: ${h.details}</div>
-                    <div style="color:#555; font-size:0.85em;">細💧 水份明細: ${h.waterDetails || '無紀錄'}</div>
-                    <div style="color:#555; font-size:0.82em; margin-top:3px; border-top:1px dashed #eee; padding-top:3px;">💊 藥物狀態: ${h.meds}</div>
+                    <div style="margin-top:5px; color:#555; font-size:0.85em; line-height:1.4;">🍖 飲食明細: ${cleanFoodDetails(h.details)}</div>
+                    <div style="color:#555; font-size:0.85em; line-height:1.4;">💧 水份明細: ${cleanWaterDetails(h.waterDetails)}</div>
+                    <div style="color:#2c3e50; font-size:0.82em; margin-top:5px; border-top:1px dashed #ddd; padding-top:4px; font-weight:5px;">💊 藥物狀態: ${cleanMedsDetails(h.meds)}</div>
                 </div>
             `;
         }).join('');
